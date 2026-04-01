@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comic Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0ebe0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 48px 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #1a1a1a;
+    }
+
+    .tagline {
+      font-size: 1rem;
+      color: #666;
+      margin-top: -20px;
+    }
+
+    .form-row {
+      display: flex;
+      width: 100%;
+      gap: 8px;
+    }
+
+    #topic {
+      flex: 1;
+      padding: 12px 16px;
+      font-size: 1rem;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      outline: none;
+      background: #fff;
+      transition: border-color 0.2s;
+    }
+    #topic:focus { border-color: #3a78b0; }
+
+    #generate-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #3a78b0;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    #generate-btn:hover:not(:disabled) { background: #2e619a; }
+    #generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* Spinner */
+    .spinner-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #ddd;
+      border-top-color: #3a78b0;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result */
+    #result {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    #comic-img {
+      width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    #download-link {
+      display: inline-block;
+      padding: 10px 28px;
+      background: #fff;
+      color: #3a78b0;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border: 2px solid #3a78b0;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+    }
+    #download-link:hover { background: #3a78b0; color: #fff; }
+
+    /* Error */
+    #error-msg {
+      width: 100%;
+      padding: 12px 16px;
+      background: #fde8e8;
+      border: 1px solid #f5a0a0;
+      border-radius: 8px;
+      color: #c0392b;
+      font-size: 0.9rem;
+    }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Comic Generator</h1>
+    <p class="tagline">Turn any topic into a 4-panel comic strip</p>
+
+    <div class="form-row">
+      <input
+        id="topic"
+        type="text"
+        placeholder="e.g. Monday morning meetings"
+        maxlength="120"
+        autocomplete="off"
+      />
+      <button id="generate-btn">Generate</button>
+    </div>
+
+    <div id="spinner" hidden>
+      <div class="spinner-wrap">
+        <div class="spinner"></div>
+        <span>Writing script &amp; drawing comic…</span>
+      </div>
+    </div>
+
+    <div id="error-msg" hidden></div>
+
+    <div id="result" hidden>
+      <img id="comic-img" alt="Generated comic strip" />
+      <a id="download-link" href="#" download="comic.png">Download PNG</a>
+    </div>
+  </div>
+
+  <script>
+    const btn      = document.getElementById('generate-btn');
+    const input    = document.getElementById('topic');
+    const spinner  = document.getElementById('spinner');
+    const result   = document.getElementById('result');
+    const img      = document.getElementById('comic-img');
+    const dlLink   = document.getElementById('download-link');
+    const errorMsg = document.getElementById('error-msg');
+
+    let prevBlobUrl = null;
+
+    async function generate() {
+      const topic = input.value.trim();
+      if (!topic) { input.focus(); return; }
+
+      setLoading(true);
+
+      try {
+        const res = await fetch('/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic }),
+        });
+
+        if (!res.ok) {
+          throw new Error((await res.text()) || `Server error ${res.status}`);
+        }
+
+        const blob = await res.blob();
+
+        if (prevBlobUrl) URL.revokeObjectURL(prevBlobUrl);
+        prevBlobUrl = URL.createObjectURL(blob);
+
+        img.src = prevBlobUrl;
+        dlLink.href = prevBlobUrl;
+        dlLink.download = 'comic_' + topic.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40) + '.png';
+
+        result.hidden = false;
+      } catch (err) {
+        errorMsg.textContent = 'Error: ' + err.message;
+        errorMsg.hidden = false;
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function setLoading(on) {
+      btn.disabled      = on;
+      spinner.hidden    = !on;
+      result.hidden     = true;
+      errorMsg.hidden   = true;
+    }
+
+    btn.addEventListener('click', generate);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') generate(); });
+  </script>
+</body>
+</html>
